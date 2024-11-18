@@ -1,12 +1,13 @@
 import tensorflow as tf
 import tensorflow_hub as hub
 from tensorflow.keras.utils import get_custom_objects
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, UploadFile,File, HTTPException
 from pydantic import BaseModel
 import numpy as np
 from PIL import Image
 import requests
 import tf_keras
+import io
 
 # Register the custom KerasLayer so that TensorFlow can recognize it when loading the model
 get_custom_objects().update({'KerasLayer': hub.KerasLayer})
@@ -37,42 +38,55 @@ class_labels = [
 ]
 
 # Function to preprocess the image before prediction
-def process_image(image_path, img_size=224):
-    try:
-        # Open image from URL (or local path if changed)
-        if image_path.startswith('http'):
-            image = Image.open(requests.get(image_path, stream=True).raw)
-        else:
-            image = Image.open(image_path)
+# def process_image(image_path, img_size=224):
+#     try:
+#         # Open image from URL (or local path if changed)
+#         if image_path.startswith('http'):
+#             image = Image.open(requests.get(image_path, stream=True).raw)
+#         else:
+#             image = Image.open(image_path)
 
-        # Resize the image to the expected size (224x224)
-        image = image.resize((img_size, img_size))
+#         # Resize the image to the expected size (224x224)
+#         image = image.resize((img_size, img_size))
 
-        # Convert image to numpy array
-        image_array = np.array(image)
+#         # Convert image to numpy array
+#         image_array = np.array(image)
 
-        # Normalize the image (scaling pixel values to 0-1 range)
-        image_array = image_array.astype(np.float32) / 255.0
+#         # Normalize the image (scaling pixel values to 0-1 range)
+#         image_array = image_array.astype(np.float32) / 255.0
 
-        # Add batch dimension (model expects a batch of images)
-        image_array = np.expand_dims(image_array, axis=0)
+#         # Add batch dimension (model expects a batch of images)
+#         image_array = np.expand_dims(image_array, axis=0)
         
-        return image_array
+#         return image_array
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
+def process_image(file: bytes):
+    """Process the image (resize, normalize, etc.)"""
+    try:
+        # Open the image from binary data
+        image = Image.open(io.BytesIO(file)).convert("RGB")
+        image = image.resize((224, 224))  # Example size; change based on your model's input
+        image_array = np.array(image) / 255.0  # Normalize to 0-1 range
+        return np.expand_dims(image_array, axis=0)  # Add batch dimension
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
+        raise ValueError(f"Error processing image: {str(e)}")
 
 # Define the PredictionRequest model
 class PredictionRequest(BaseModel):
     image_url: str
 
-# Define the prediction endpoint
-@app.get("/predict")
-def predict():
-    #request=PredictionRequest{image_url="pizz.jpg"};
+@app.post("/predict")
+async def predict(file: UploadFile = File(...)):
+    """
+    Endpoint to handle image prediction.
+    Accepts a blob image as a POST request and returns the predicted label.
+    """
     try:
-        # Preprocess the image (resize, normalize, etc.)
-        #request.image_url = "pizz.jpg"
-        input_data = process_image("q.jpeg")  # Replace with actual image data (URL or file path)
+        # Read file and process the image
+        image_data = await file.read()
+        input_data = process_image(image_data)
+        #input_data = process_image("q.jpeg")  # Replace with actual image data (URL or file path)
 
         # Perform the prediction
         prediction = model.predict(input_data)
