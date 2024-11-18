@@ -1,4 +1,4 @@
-import tensorflow as tf
+#import tensorflow as tf
 import tensorflow_hub as hub
 from tensorflow.keras.utils import get_custom_objects
 from fastapi import FastAPI, HTTPException
